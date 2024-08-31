@@ -1,0 +1,1 @@
+gzdoom.exe -stdout -config TobyConfig.ini -file TobyAccMod_V7-5.pk3 "./Addons/DOOM/TobyV7_Proximity-Prototype.pk3" "./Addons/MENU/TobyV7_SimpleMenu.pk3" OpMDK.wad "./PB-Toby-Compatibility-Addon.pk3" "./Project_Brutality.pk3" | powershell -ExecutionPolicy Bypass -File DoomTTS.ps1
