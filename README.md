@@ -5,7 +5,7 @@ Scripts for the [Toby Doom Accessibility project](https://github.com/Alando1-doo
 
 ## Usage
 
-Place .bat files and DoomTTS.ps1 in the top level directory of Toby Doom. Example file structure for DoomTTS.psa:
+Place .bat files and DoomTTS.ps1 in the top level directory of Toby Doom. Example file structure for DoomTTS.ps1:
 
     TobyAccessibilityMod_Version7-5\DoomTTS.ps1
 
