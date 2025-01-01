@@ -4,7 +4,8 @@ block_cipher = None
 
 # Define asset folders that should exist in current directory
 asset_folders = [
-    ('TobyCustom', 'TobyCustom')
+    ('TobyCustom', 'TobyCustom'),
+    ('nvdaControllerClient.dll', 'nvdaControllerClient.dll')
 ]
 
 a = Analysis(['Toby Doom Launcher.py'],
