@@ -25,6 +25,7 @@ import sys
 import os
 import re
 import subprocess
+import time
 import platform
 import shutil
 import glob
@@ -729,8 +730,11 @@ class DoomLauncher(QMainWindow):
     def load_custom_games(self) -> Dict[str, dict]:
         """Load all custom game configurations"""
         custom_games = {}
-        custom_dir = Path(__file__).parent / "TobyCustom"
-        
+        if platform.system() == "Windows":
+            custom_dir = Path.cwd() / "TobyCustom"
+        else:
+            custom_dir = Path(__file__).parent / "TobyCustom"
+
         if not custom_dir.exists():
             return custom_games
 
@@ -1006,7 +1010,26 @@ class DoomLauncher(QMainWindow):
             
             # Platform-specific audio playback
             if platform.system() == "Windows":
-                subprocess.run(['powershell', 'Start-Process', '-FilePath', 'wmplayer', '/play', '/close'] + [str(t) for t in audioTracks])
+                # Use absolute paths for Windows Media Player
+                playlist_path = self.gamePath / "temp_playlist.m3u"
+                try:
+                    with open(playlist_path, 'w', encoding='utf-8') as f:
+                        f.write('#EXTM3U\n')  # M3U header
+                        for track in audioTracks:
+                            abs_path = track.resolve()  # Get absolute path
+                            f.write(str(abs_path) + '\n')
+                    os.startfile(str(playlist_path))
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"Failed to play audio: {e}")
+                finally:
+                    # Clean up playlist after delay
+                    def cleanup():
+                        time.sleep(2)
+                        try:
+                            playlist_path.unlink()
+                        except:
+                            pass
+                    threading.Thread(target=cleanup, daemon=True).start()
             elif platform.system() == "Darwin":  # macOS
                 subprocess.run(['afplay'] + [str(t) for t in audioTracks])
             else:  # Linux

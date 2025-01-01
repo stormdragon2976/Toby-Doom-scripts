@@ -1,10 +1,17 @@
 # Toby Doom Launcher.spec
+
 block_cipher = None
+
+# Define asset folders that should exist in current directory
+asset_folders = [
+    ('TobyCustom', 'TobyCustom'),
+    ('DoomTTS.ps1', '.')
+]
 
 a = Analysis(['Toby Doom Launcher.py'],
              pathex=[],
              binaries=[],
-             datas=[],
+             datas=asset_folders,  # Include the assets reference
              hiddenimports=['PySide6.QtXml'],
              hookspath=[],
              hooksconfig={},
@@ -31,5 +38,4 @@ exe = EXE(pyz,
           upx=True,
           upx_exclude=[],
           runtime_tmpdir=None,
-          console=True,
-          )
+          console=True)
