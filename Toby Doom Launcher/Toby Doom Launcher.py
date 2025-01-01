@@ -38,6 +38,20 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QDialogButtonBox, QRadioButton)
 from PySide6.QtCore import Qt
 import webbrowser
+try:
+    import speechd
+    spd = speechd.Client()
+    speechProvider = "speechd"
+except ImportError:
+    import accessible_output2.outputs.auto
+    s = accessible_output2.outputs.auto.Auto()
+    speechProvider = "accessible_output2"
+except ImportError:
+    output = subprocess.check_output(["pgrep", "cthulhu"])
+except (subprocess.CalledProcessError, FileNotFoundError):
+    print("No other speech providers found.")
+    sys.exit()
+
 
 class AccessibleComboBox(QComboBox):
     """ComboBox with enhanced keyboard navigation"""
@@ -111,41 +125,25 @@ class SpeechHandler:
     ]
     
     def __init__(self):
-        """Initialize the speech handler with screen reader support"""
+        """Initialize the speech handler"""
         self.platform = platform.system()
-        self.useCthulhu = self.check_cthulhu()
         
-        # Initialize accessible_output2
-        try:
-            import accessible_output2.outputs.auto
-            self.speaker = accessible_output2.outputs.auto.Auto()
-            self.useAccessibleOutput = True
-        except ImportError:
-            self.speaker = None
-            self.useAccessibleOutput = False
-            print("Warning: accessible_output2 not found, falling back to system TTS")
-            
         # Compile all regex patterns once at initialization
         self.filterPatterns = [re.compile(pattern) for pattern in self.FILTER_PATTERNS]
         self.textReplacements = [(re.compile(pattern), repl) 
                                for pattern, repl in self.TEXT_REPLACEMENTS]
-
-    def check_cthulhu(self) -> bool:
-        """Check if cthulhu process is running"""
-        if self.platform != "Windows":
-            try:
-                output = subprocess.check_output(["pgrep", "cthulhu"])
-                return bool(output.strip())
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                return False
-        return False
 
     def speak(self, text: str) -> None:
         """Speak text using available speech method"""
         if not text:
             return
             
-        if self.useCthulhu:
+        if speechProvider == "speechd":
+            spd.cancel()
+            spd.speak(text)
+        elif speechProvider == "accessible_output2":
+            s.speak(text, interrupt=True)
+        else:  # Cthulhu
             try:
                 process = subprocess.Popen(
                     ["socat", "-", "UNIX-CLIENT:/tmp/cthulhu.sock"],
@@ -155,38 +153,8 @@ class SpeechHandler:
                     text=True
                 )
                 process.communicate(input=text)
-                return
             except Exception as e:
                 print(f"Cthulhu error: {e}", file=sys.stderr)
-                # Fall through to other methods if cthulhu fails
-                
-        if self.useAccessibleOutput and self.speaker:
-            try:
-                self.speaker.speak(text, interrupt=True)
-                return
-            except Exception as e:
-                print(f"accessible_output2 error: {e}", file=sys.stderr)
-                # Fall through to system TTS if accessible_output2 fails
-        
-        # Fallback to system TTS
-        try:
-            if self.platform == "Linux":
-                subprocess.run(["spd-say", "--wait", "-e", text])
-            elif self.platform == "Darwin":
-                subprocess.run(["say", text])
-            elif self.platform == "Windows":
-                doomTTSPath = Path.cwd() / "DoomTTS.ps1"
-                if doomTTSPath.exists():
-                    process = subprocess.Popen(
-                        ["powershell", "-File", str(doomTTSPath)],
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True
-                    )
-                    process.communicate(input=text)
-        except Exception as e:
-            print(f"System TTS error: {e}", file=sys.stderr)
 
     def process_line(self, line: str) -> Optional[str]:
         """Process a line of game output for speech"""
