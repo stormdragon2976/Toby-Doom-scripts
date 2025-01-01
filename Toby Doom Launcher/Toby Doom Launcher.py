@@ -77,51 +77,62 @@ class AccessibleComboBox(QComboBox):
 class SpeechHandler:
     """Handles text-to-speech processing for game output"""
     
+    # Class-level constants for patterns
+    FILTER_PATTERNS = [
+        r'^----+$',
+        r'^$',
+        r'^[0-9]',
+        r'^P_StartScript:',
+        r'^(Facing |fluidsynth |INTRO|MAP[0-9]+|Music "|Unknown)',
+        r'^(\[Toby Accessibility Mod\] )?READ.*',
+        r'^ *TITLEMAP',
+        r'^\[Toby Accessibility Mod\] (INTRO|READMe)([0-9]+).*',
+        r'key card',
+        r'^New PDA Entry:',
+        r"^(As |Computer Voice:|Holy|I |I've|Monorail|Sector |Ugh|What|Where)",
+        r'Script warning, "',
+        r'Tried to define'
+    ]
+    
+    TEXT_REPLACEMENTS = [
+        (r'^\[Toby Accessibility Mod\] M_', r'[Toby Accessibility Mod] '),
+        (r'^\[Toby Accessibility Mod\] ', r''),
+        (r'^MessageBoxMenu$', r'Confirmation menu: Press Y for yes or N for no'),
+        (r'^Mainmenu$', r'Main menu'),
+        (r'^Skillmenu$', r'Difficulty menu'),
+        (r'^Episodemenu$', r'Episode menu'),
+        (r'^NGAME$', r'New game'),
+        (r'^(LOAD|SAVE|QUIT)G$', r'\1 game'),
+        (r'"cl_run" = "true"', r'run'),
+        (r'"cl_run" = "false"', r'walk'),
+        (r'UAC', r'U A C'),
+        (r'^\+', r''),
+        (r' ?\*+ ?', r'')
+    ]
+    
     def __init__(self):
+        """Initialize the speech handler with screen reader support"""
         self.platform = platform.system()
         self.useCthulhu = self.check_cthulhu()
-        # Patterns to filter out unwanted lines
-        self.antiGrepPatterns = [
-            r'^----+$',
-            r'^$',
-            r'^[0-9]',
-            r'^P_StartScript:',
-            r'^(Facing |fluidsynth |INTRO|MAP[0-9]+|Music "|Unknown)',
-            r'^(\[Toby Accessibility Mod\] )?READ.*',
-            r'^ *TITLEMAP',
-            r'^\[Toby Accessibility Mod\] (INTRO|READMe)([0-9]+).*',
-            r'key card',
-            r'^New PDA Entry:',
-            r"^(As |Computer Voice:|Holy|I |I've|Monorail|Sector |Ugh|What|Where)",
-            r'Script warning, "',
-            r'Tried to define'
-        ]
-        # Compiled regex patterns for performance
-        self.antiGrepCompiled = [re.compile(pattern) for pattern in self.antiGrepPatterns]
         
-        # Text replacement patterns
-        self.replacementPatterns = [
-            (r'^\[Toby Accessibility Mod\] M_', r'[Toby Accessibility Mod] '),
-            (r'^\[Toby Accessibility Mod\] ', r''),
-            (r'^MessageBoxMenu$', r'Confirmation menu: Press Y for yes or N for no'),
-            (r'^Mainmenu$', r'Main menu'),
-            (r'^Skillmenu$', r'Difficulty menu'),
-            (r'^Episodemenu$', r'Episode menu'),
-            (r'^NGAME$', r'New game'),
-            (r'^(LOAD|SAVE|QUIT)G$', r'\1 game'),
-            (r'"cl_run" = "true"', r'run'),
-            (r'"cl_run" = "false"', r'walk'),
-            (r'UAC', r'U A C'),
-            (r'^\+', r''),
-            (r' ?\*+ ?', r'')
-        ]
-        # Compiled replacement patterns
-        self.replacementCompiled = [(re.compile(pattern), repl) 
-                                  for pattern, repl in self.replacementPatterns]
+        # Initialize accessible_output2
+        try:
+            import accessible_output2.outputs.auto
+            self.speaker = accessible_output2.outputs.auto.Auto()
+            self.useAccessibleOutput = True
+        except ImportError:
+            self.speaker = None
+            self.useAccessibleOutput = False
+            print("Warning: accessible_output2 not found, falling back to system TTS")
+            
+        # Compile all regex patterns once at initialization
+        self.filterPatterns = [re.compile(pattern) for pattern in self.FILTER_PATTERNS]
+        self.textReplacements = [(re.compile(pattern), repl) 
+                               for pattern, repl in self.TEXT_REPLACEMENTS]
 
     def check_cthulhu(self) -> bool:
         """Check if cthulhu process is running"""
-        if platform.system() != "Windows":
+        if self.platform != "Windows":
             try:
                 output = subprocess.check_output(["pgrep", "cthulhu"])
                 return bool(output.strip())
@@ -129,22 +140,53 @@ class SpeechHandler:
                 return False
         return False
 
-    def get_speech_command(self) -> List[str]:
-        """Get appropriate speech command for current platform"""
+    def speak(self, text: str) -> None:
+        """Speak text using available speech method"""
+        if not text:
+            return
+            
         if self.useCthulhu:
-            return ["socat", "-", "UNIX-CLIENT:/tmp/cthulhu.sock"]
+            try:
+                process = subprocess.Popen(
+                    ["socat", "-", "UNIX-CLIENT:/tmp/cthulhu.sock"],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=text)
+                return
+            except Exception as e:
+                print(f"Cthulhu error: {e}", file=sys.stderr)
+                # Fall through to other methods if cthulhu fails
+                
+        if self.useAccessibleOutput and self.speaker:
+            try:
+                self.speaker.speak(text, interrupt=True)
+                return
+            except Exception as e:
+                print(f"accessible_output2 error: {e}", file=sys.stderr)
+                # Fall through to system TTS if accessible_output2 fails
         
-        if self.platform == "Linux":
-            return ["spd-say", "--wait", "-e"]
-        elif self.platform == "Darwin":
-            return ["say"]
-        elif self.platform == "Windows":
-            doomTTSPath = Path.cwd() / "DoomTTS.ps1"
-            if not doomTTSPath.exists():
-                raise RuntimeError("DoomTTS.ps1 not found")
-            return ["powershell", "-File", str(doomTTSPath)]
-        
-        raise RuntimeError(f"Unsupported platform: {self.platform}")
+        # Fallback to system TTS
+        try:
+            if self.platform == "Linux":
+                subprocess.run(["spd-say", "--wait", "-e", text])
+            elif self.platform == "Darwin":
+                subprocess.run(["say", text])
+            elif self.platform == "Windows":
+                doomTTSPath = Path.cwd() / "DoomTTS.ps1"
+                if doomTTSPath.exists():
+                    process = subprocess.Popen(
+                        ["powershell", "-File", str(doomTTSPath)],
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    process.communicate(input=text)
+        except Exception as e:
+            print(f"System TTS error: {e}", file=sys.stderr)
 
     def process_line(self, line: str) -> Optional[str]:
         """Process a line of game output for speech"""
@@ -153,20 +195,19 @@ class SpeechHandler:
             return None
             
         # Check if line should be filtered out
-        for pattern in self.antiGrepCompiled:
+        for pattern in self.filterPatterns:
             if pattern.search(line):
                 return None
                 
         # Apply replacements
         processedLine = line
-        for pattern, repl in self.replacementCompiled:
+        for pattern, repl in self.textReplacements:
             processedLine = pattern.sub(repl, processedLine)
             
         return processedLine.strip() if processedLine.strip() else None
 
     def speak_thread(self, process: subprocess.Popen):
         """Thread to handle speech processing"""
-        speechCmd = self.get_speech_command()
         startSpeech = False  # Don't start speaking until after initial output
         
         while True:
@@ -185,17 +226,7 @@ class SpeechHandler:
                 
                 processedLine = self.process_line(lineStr)
                 if processedLine:
-                    try:
-                        speechProcess = subprocess.Popen(
-                            speechCmd,
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE,
-                            text=True
-                        )
-                        speechProcess.communicate(input=processedLine)
-                    except Exception as e:
-                        print(f"Speech error: {e}", file=sys.stderr)
+                    self.speak(processedLine)
                         
             except Exception as e:
                 print(f"Error processing game output: {e}", file=sys.stderr)
@@ -1252,26 +1283,24 @@ class DoomLauncher(QMainWindow):
             return
             
         iwadPath = self.iwadCombo.itemData(iwadIndex)
-        if platform.system() == "Windows":
-            configFile = Path.cwd() / 'TobyConfig.ini'
-            cmdLine = [gzdoomPath, "-stdout", "-config", str(configFile), "-iwad", iwadPath, "-file"] + gameFiles
-        else:
-            cmdLine = [gzdoomPath, "-stdout", "-iwad", iwadPath, "-file"] + gameFiles
 
-        if gameFlags:
-            cmdLine.extend(gameFlags)
-            
         try:
             if platform.system() == "Windows":
+                configFile = Path.cwd() / 'TobyConfig.ini'
                 # For Windows, pipe directly to PowerShell running DoomTTS.ps1
+                cmdLine = [gzdoomPath, "-stdout", "-config", str(configFile), 
+                        "-iwad", iwadPath, "-file"] + gameFiles
+                if gameFlags:
+                    cmdLine.extend(gameFlags)
+                
                 fullCmd = " ".join(cmdLine) + " | powershell -ExecutionPolicy Bypass -File DoomTTS.ps1"
                 process = subprocess.Popen(
                     fullCmd,
                     cwd=str(self.gamePath),
                     shell=True
                 )
-                
-                # Monitor thread only
+            
+                # Monitor thread only for Windows
                 monitorThread = threading.Thread(
                     target=self.monitor_game_process,
                     args=(process,),
@@ -1279,8 +1308,11 @@ class DoomLauncher(QMainWindow):
                 )
                 monitorThread.start()
             else:
-                # Original Linux/Mac behavior
-                cmdLine = ["stdbuf", "-oL"] + cmdLine
+                # For Linux/Mac, use stdbuf to unbuffer output
+                cmdLine = ["stdbuf", "-oL", gzdoomPath, "-stdout", 
+                        "-iwad", iwadPath, "-file"] + gameFiles
+                if gameFlags:
+                    cmdLine.extend(gameFlags)
                 
                 process = subprocess.Popen(
                     cmdLine,
@@ -1291,7 +1323,7 @@ class DoomLauncher(QMainWindow):
                     text=True,
                     env=dict(os.environ, PYTHONUNBUFFERED="1")
                 )
-                
+            
                 # Start speech processing thread
                 speechThread = threading.Thread(
                     target=self.speechHandler.speak_thread,
@@ -1299,7 +1331,7 @@ class DoomLauncher(QMainWindow):
                     daemon=True
                 )
                 speechThread.start()
-                
+            
                 # Start process monitor thread
                 monitorThread = threading.Thread(
                     target=self.monitor_game_process,
@@ -1307,12 +1339,13 @@ class DoomLauncher(QMainWindow):
                     daemon=True
                 )
                 monitorThread.start()
-            
+        
             # Hide the window
             self.hide()
             
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to launch game: {e}")
+
 
 if __name__ == "__main__":
     setproctitle("Toby Doom Launcher")

@@ -4,15 +4,14 @@ block_cipher = None
 
 # Define asset folders that should exist in current directory
 asset_folders = [
-    ('TobyCustom', 'TobyCustom'),
-    ('DoomTTS.ps1', 'DoomTTS.ps1')
+    ('TobyCustom', 'TobyCustom')
 ]
 
 a = Analysis(['Toby Doom Launcher.py'],
              pathex=[],
              binaries=[],
              datas=asset_folders,  # Include the assets reference
-             hiddenimports=['PySide6.QtXml'],
+             hiddenimports=['PySide6.QtXml', 'accessible_output2'],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
