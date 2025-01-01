@@ -1,43 +1,21 @@
 # Toby Doom Launcher.spec
 block_cipher = None
 
-# Import to help locate files
-from pathlib import Path
-import accessible_output2
-
-# Get the accessible_output2 installation directory
-ao2_path = Path(accessible_output2.__file__).parent
-
-# Define asset folders and files that should exist
+# Define asset folders that should exist in current directory
 asset_folders = [
     ('TobyCustom', 'TobyCustom'),
 ]
 
-# Add DLLs needed by accessible_output2
-dlls = [
-    (str(ao2_path / 'lib/dolapi.dll'), '.'),
-    (str(ao2_path / 'lib/nvdaControllerClient32.dll'), '.'),
-    (str(ao2_path / 'lib/nvdaControllerClient64.dll'), '.'),
-    (str(ao2_path / 'lib/ZDSRAPI_x64.dll'), '.'),
-    (str(ao2_path / 'lib/PCTKUSR64.dll'), '.'),
-    (str(ao2_path / 'lib/PCTKUSR.dll'), '.'),
-    (str(ao2_path / 'lib/SAAPI32.dll'), '.'),
-    (str(ao2_path / 'lib/ZDSRAPI.dll'), '.')
-]
-
-# Combine all data files
-all_datas = asset_folders + dlls
-
 a = Analysis(['Toby Doom Launcher.py'],
              pathex=[],
              binaries=[],
-             datas=all_datas,
-             hiddenimports=['accessible_output2.outputs.nvda',
-                           'accessible_output2.outputs.jaws',
-                           'accessible_output2.outputs.window_eyes',
-                           'accessible_output2.outputs.system_access',
-                           'accessible_output2.outputs.dolphin',
-                           'accessible_output2.outputs.sapi5'],
+             datas=asset_folders,  # Include the assets reference
+             hiddenimports=[
+                 'PySide6.QtXml',
+                 'accessible_output2.outputs.auto',
+                 'speechd',
+                 'setproctitle'
+             ],
              hookspath=[],
              hooksconfig={},
              runtime_hooks=[],
@@ -63,4 +41,9 @@ exe = EXE(pyz,
           upx=True,
           upx_exclude=[],
           runtime_tmpdir=None,
-          console=True)
+          console=True,
+          disable_windowed_traceback=False,
+          argv_emulation=False,
+          target_arch=None,
+          codesign_identity=None,
+          entitlements_file=None)
