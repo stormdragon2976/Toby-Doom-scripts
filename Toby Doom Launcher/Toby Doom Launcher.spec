@@ -5,7 +5,7 @@ block_cipher = None
 # Define asset folders that should exist in current directory
 asset_folders = [
     ('TobyCustom', 'TobyCustom'),
-    ('DoomTTS.ps1', '.')
+    ('DoomTTS.ps1', 'DoomTTS.ps1')
 ]
 
 a = Analysis(['Toby Doom Launcher.py'],
