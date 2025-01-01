@@ -1,0 +1,32 @@
+{
+  "name": "Project Brutality",
+  "dependencies": [
+    {
+      "file": "Project_Brutality.pk3",
+      "url": "https://www.moddb.com/mods/project-brutality",
+      "messages": [
+        "This should be included by default.",
+        "If you are seeing this message, please reinstall after removing any TobyDoom files from ~/.cache/linux-game-manager.",
+        "rm -f ~/.cache/linux-game-manager/TobyAccessibilityMod_Version*"
+      ]
+    }
+  ],
+  "files": [
+    "Addons/DOOM/TobyV{toby_base_version}_Proximity.pk3",
+    "PB-Toby-Compatibility-Addon.pk3",
+    "Project_Brutality.pk3"
+  ],
+  "optional_files": [
+    "DoomMetalVol7.wad",
+    "DoomMetalVol6.wad"
+  ],
+  "flags": [
+    "+pb_exaggeratedrecoil", "false",
+    "+pb_weapon_recoil_mod_horizontal", "0",
+    "+pb_weapon_recoil_mod_vertical", "0",
+    "+vertspread", "true",
+    "+Toby_SnapToTargetTargetingMode", "1",
+    "+Toby_UniversalBeacon_UseUniversalSounds", "false"
+  ],
+  "use_map_menu": true
+}

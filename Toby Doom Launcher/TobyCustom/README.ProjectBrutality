@@ -1,0 +1,14 @@
+In your ~/.config/gzdoom/gzdoom.ini file, if you do not have these four sections  create them at the end. If they are there, you can just update the keybindings. It should look like this:
+
+
+[Doom.PBInteractions.Bindings]
+
+[Doom.PBInteractions.DoubleBindings]
+
+[Doom.PBAdvMoves.Bindings]
+F=+User2
+G=+User1
+U=unreloader
+V=+User4
+
+[Doom.PBAdvMoves.DoubleBindings]

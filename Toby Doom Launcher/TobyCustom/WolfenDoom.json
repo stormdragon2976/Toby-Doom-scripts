@@ -1,0 +1,44 @@
+{
+  "name": "WolfenDoom",
+  "dependencies": [
+    {
+      "file": "Addons/WOLFENDOOM/orig_enh.pk3",
+      "url": "https://www.moddb.com/mods/wolfendoom/downloads/wolfendoom-enhanced",
+      "messages": [
+        "mkdir -p ~/.local/games/doom/Addons/WOLFENDOOM/",
+        "Place all pk3 files from the zip archive in:",
+        "~/.local/games/doom/Addons/WOLFENDOOM/",
+        "There should be three of them noct_enh.pk3, orig_enh.pk3, and sod_enh.pk3"
+      ]
+    }
+  ],
+  "submenu": {
+    "title": "Select Game",
+    "options": [
+      {
+        "name": "WolfenDoom",
+        "file": "Addons/WOLFENDOOM/orig_enh.pk3"
+      },
+      {
+        "name": "WolfenDoom - Spear of Destiny",
+        "file": "Addons/WOLFENDOOM/sod_enh.pk3"
+      },
+      {
+        "name": "WolfenDoom - Nocturne",
+        "file": "Addons/WOLFENDOOM/noct_enh.pk3"
+      }
+    ]
+  },
+  "files": [
+    "Addons/MENU/TobyV{toby_base_version}_*",
+    "Addons/DOOM/TobyV{toby_base_version}_Proximity.pk3"
+  ],
+  "flags": [
+    "+bind", "Ctrl", "+attack",
+    "+bind", "X", "turn180",
+    "+Toby_NarrationOutputType", "2",
+    "+Toby_SnapToTargetTargetingMode", "1",
+    "+Toby_UniversalBeacon_UseUniversalSounds", "true"
+  ],
+  "use_map_menu": true
+}

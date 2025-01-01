@@ -1,0 +1,18 @@
+{
+  "name": "Star Wars",
+  "dependencies": [
+    {
+      "file": "Xim-StarWars-v3.1.5.pk3",
+      "url": "",
+      "messages": [
+        "Place Xim-StarWars-v3.1.5.pk3 in ~/.local/games/doom"
+      ]
+    }
+  ],
+  "files": [
+    "Addons/MENU/TobyV{toby_base_version}_*.pk3",
+    "Xim-StarWars-v3.1.5.pk3",
+    "Addons/STARWARS/*"
+  ],
+  "use_map_menu": true
+}

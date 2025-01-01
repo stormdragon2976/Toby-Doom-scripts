@@ -1,0 +1,24 @@
+{
+  "name": "Army of Darkness Doom",
+  "dependencies": [
+    {
+      "file": "aoddoom1.wad",
+      "url": "https://www.moddb.com/mods/army-of-darkness-total-conversion/addons/army-of-darkness-doom-wad",
+      "messages": [
+        "Place \"aoddoom1.wad\" in \"${gamePath}\""
+      ]
+    }
+  ],
+  "files": [
+    "Addons/MENU/TobyV{toby_base_version}_*",
+    "aoddoom1.wad"
+  ],
+  "optional_files": [
+    "DoomMetalVol7.wad",
+    "DoomMetalVol6.wad"
+  ],
+  "flags": [
+    "+Toby_UniversalBeacon_UseUniversalSounds", "true"
+  ],
+  "use_map_menu": true
+}
