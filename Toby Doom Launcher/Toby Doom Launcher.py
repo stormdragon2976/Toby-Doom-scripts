@@ -38,6 +38,17 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
     QDialogButtonBox, QRadioButton)
 from PySide6.QtCore import Qt
 import webbrowser
+
+# Add DLL directory to PATH on Windows
+if sys.platform == 'win32':
+    if getattr(sys, 'frozen', False):
+        # If running as compiled executable
+        dll_path = os.path.join(sys._MEIPASS, 'lib')
+        if os.path.exists(dll_path):
+            os.add_dll_directory(dll_path)
+        # Also add the executable's directory
+        os.add_dll_directory(os.path.dirname(sys.executable))
+
 try:
     import speechd
     spd = speechd.Client()
