@@ -231,7 +231,7 @@ class MenuDialog(QDialog):
                 dialogWidget = QLineEdit()
                 dialogWidget.setPlaceholderText(opt['placeholder'])
             elif opt['type'] == 'combobox':
-                dialogWidget = QComboBox()
+                dialogWidget = AccessibleComboBox()
                 dialogWidget.addItems(opt['items'])
                 dialogLayout.addWidget(QLabel(opt['label']))
             else:
@@ -963,20 +963,16 @@ class DoomLauncher(QMainWindow):
         
         # Manual selection
         manualLabel = QLabel("Select Manual:")
-        manualCombo = QComboBox()
+        manualCombo = AccessibleComboBox()
         manualCombo.setAccessibleName("Manual Selection")
-        manualCombo.setEditable(True)
-        manualCombo.lineEdit().setReadOnly(True)
         manualCombo.addItems([m.name for m in manualDirs])
         dialogLayout.addWidget(manualLabel)
         dialogLayout.addWidget(manualCombo)
         
         # Track selection
         trackLabel = QLabel("Select Track:")
-        trackCombo = QComboBox()
+        trackCombo = AccessibleComboBox()
         trackCombo.setAccessibleName("Track Selection")
-        trackCombo.setEditable(True)
-        trackCombo.lineEdit().setReadOnly(True)
         trackCombo.addItem("Play All")
         trackCombo.addItems([t.stem for t in firstManualTracks])
         dialogLayout.addWidget(trackLabel)
