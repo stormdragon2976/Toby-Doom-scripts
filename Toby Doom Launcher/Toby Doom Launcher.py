@@ -39,8 +39,9 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PySide6.QtCore import Qt
 import webbrowser
 
-# Add DLL directory to PATH on Windows
-if sys.platform == 'win32':
+# Initialize speech provider based on platform
+if platform.system() == "Windows":
+    # Set up DLL paths for Windows
     if getattr(sys, 'frozen', False):
         # If running as compiled executable
         dll_path = os.path.join(sys._MEIPASS, 'lib')
@@ -49,20 +50,32 @@ if sys.platform == 'win32':
         # Also add the executable's directory
         os.add_dll_directory(os.path.dirname(sys.executable))
 
-try:
-    output = subprocess.check_output(["pgrep", "cthulhu"])
-    speechProvider = "cthulhu"
-except (subprocess.CalledProcessError, FileNotFoundError):
-    import speechd
-    spd = speechd.Client()
-    speechProvider = "speechd"
-except ImportError:
-    import accessible_output2.outputs.auto
-    s = accessible_output2.outputs.auto.Auto()
-    speechProvider = "accessible_output2"
-except ImportError:
-    print("No speech providers found.")
-    sys.exit()
+    # Initialize Windows speech provider
+    try:
+        import accessible_output2.outputs.auto
+        s = accessible_output2.outputs.auto.Auto()
+        speechProvider = "accessible_output2"
+    except ImportError as e:
+        print(f"Failed to initialize accessible_output2: {e}")
+        sys.exit()
+else:
+    # Linux/Mac path
+    try:
+        output = subprocess.check_output(["pgrep", "cthulhu"])
+        speechProvider = "cthulhu"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        try:
+            import accessible_output2.outputs.auto
+            s = accessible_output2.outputs.auto.Auto()
+            speechProvider = "accessible_output2"
+        except ImportError as e:
+            try:
+                import speechd
+                spd = speechd.Client()
+                speechProvider = "speechd"
+            except ImportError:
+                print("No speech providers found.")
+                sys.exit()
 
 
 class AccessibleComboBox(QComboBox):
