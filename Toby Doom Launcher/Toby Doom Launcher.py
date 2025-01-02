@@ -50,6 +50,9 @@ if sys.platform == 'win32':
         os.add_dll_directory(os.path.dirname(sys.executable))
 
 try:
+    output = subprocess.check_output(["pgrep", "cthulhu"])
+    speechProvider = "cthulhu"
+except (subprocess.CalledProcessError, FileNotFoundError):
     import speechd
     spd = speechd.Client()
     speechProvider = "speechd"
@@ -58,9 +61,7 @@ except ImportError:
     s = accessible_output2.outputs.auto.Auto()
     speechProvider = "accessible_output2"
 except ImportError:
-    output = subprocess.check_output(["pgrep", "cthulhu"])
-except (subprocess.CalledProcessError, FileNotFoundError):
-    print("No other speech providers found.")
+    print("No speech providers found.")
     sys.exit()
 
 
@@ -416,9 +417,11 @@ class DoomLauncher(QMainWindow):
         self.setWindowTitle("Toby Doom Launcher")
     
         if platform.system() == "Windows":
+            self.configFile = Path.cwd() / 'TobyConfig.ini'
             self.gamePath = Path.cwd()
         else:
             self.gamePath = Path.home() / ".local/games/doom"
+            self.configFile = Path(os.getenv('XDG_CONFIG_HOME', Path.home() / '.config')) / 'gzdoom/gzdoom.ini'
         
         self.tobyVersion = "8-0"
         self.speechHandler = SpeechHandler()
@@ -457,7 +460,7 @@ class DoomLauncher(QMainWindow):
         mainLayout.addWidget(iwadLabel)
         mainLayout.addWidget(self.iwadCombo)
     
-        # Game Selection (existing code)
+        # Game Selection
         self.gameCombo = AccessibleComboBox(self)
         self.gameCombo.setAccessibleName("Game Selection")
         self.populate_game_list()
@@ -465,6 +468,20 @@ class DoomLauncher(QMainWindow):
         mainLayout.addWidget(QLabel("Select Game:"))
         mainLayout.addWidget(self.gameCombo)
     
+        # Narration style selection
+        self.narrationCombo = AccessibleComboBox(self)
+        self.narrationCombo.setAccessibleName("Narration Style")
+        self.narrationCombo.addItems(["Self-voiced", "Text to Speech"])
+        # Set current value based on config
+        current = self.get_narration_type()
+        self.narrationCombo.setCurrentText(
+            "Self-voiced" if current == 0 else "Text to Speech"
+        )
+        self.narrationCombo.currentTextChanged.connect(self.narration_type_changed)
+    
+        mainLayout.addWidget(QLabel("Narration Style:"))
+        mainLayout.addWidget(self.narrationCombo)
+
         # Create buttons
         self.singlePlayerBtn = QPushButton("&Single Player")
         self.deathMatchBtn = QPushButton("&Deathmatch")
@@ -485,6 +502,92 @@ class DoomLauncher(QMainWindow):
         mainLayout.addWidget(self.deathMatchBtn)
         mainLayout.addWidget(self.customDeathMatchBtn)  # New line
         mainLayout.addWidget(self.coopBtn)
+
+    def get_narration_type(self) -> int:
+        """Get the current narration type from config file"""
+        try:
+            if not self.configFile.exists():
+                return 0  # Default if file doesn't exist
+            
+            with open(self.configFile, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('Toby_NarrationOutputType='):
+                        value = line.split('=')[1].strip()
+                        return int(value)
+            return 0  # Default to self-voiced if not found
+        except Exception as e:
+            print(f"Error reading config: {e}", file=sys.stderr)
+            return 0
+
+    def set_narration_type(self, value: int) -> bool:
+        """Set the narration type in config file
+    
+        Args:
+            value (int): Narration type (0 for self-voiced, 2 for TTS)
+        
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        try:
+            if not self.configFile.exists():
+                # Create new config with default section
+                with open(self.configFile, 'w') as f:
+                    f.write('[GlobalSettings]\n')
+                    f.write(f'Toby_NarrationOutputType={value}\n')
+                return True
+
+            # Read all lines
+            with open(self.configFile, 'r') as f:
+                lines = f.readlines()
+
+            # Try to find and replace existing setting
+            found = False
+            for i, line in enumerate(lines):
+                if line.strip().startswith('Toby_NarrationOutputType='):
+                    lines[i] = f'Toby_NarrationOutputType={value}\n'
+                    found = True
+                    break
+
+            # If not found, add to end or after [GlobalSettings]
+            if not found:
+                global_settings_index = -1
+                for i, line in enumerate(lines):
+                    if line.strip() == '[GlobalSettings]':
+                        global_settings_index = i
+                        break
+
+                if global_settings_index >= 0:
+                    # Insert after [GlobalSettings]
+                    lines.insert(global_settings_index + 1, f'Toby_NarrationOutputType={value}\n')
+                else:
+                    # Add [GlobalSettings] section if it doesn't exist
+                    lines.append('\n[GlobalSettings]\n')
+                    lines.append(f'Toby_NarrationOutputType={value}\n')
+
+            # Write back the modified content
+            with open(self.configFile, 'w') as f:
+                f.writelines(lines)
+            return True
+
+        except Exception as e:
+            print(f"Error writing config: {e}", file=sys.stderr)
+            return False
+
+    def narration_type_changed(self, text: str):
+        """Handle narration type combobox changes"""
+        value = 0 if text == "Self-voiced" else 2
+        if not self.set_narration_type(value):
+            QMessageBox.warning(
+                self,
+                "Error",
+                "Failed to update narration setting. Check file permissions."
+            )
+            # Reset combobox to current value
+            current = self.get_narration_type()
+            self.narrationCombo.setCurrentText(
+                "Self-voiced" if current == 0 else "Text to Speech"
+            )
 
     def populate_game_list(self):
         """Populate the game selection combo box"""
