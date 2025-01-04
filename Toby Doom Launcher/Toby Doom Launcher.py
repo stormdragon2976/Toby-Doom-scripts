@@ -322,24 +322,19 @@ class IWADSelector:
                             elif value == '$HOME':
                                 value = str(Path.home())
                             paths.append(value)
-            
-            if paths:
-                return paths
                 
         except Exception as e:
             print(f"Error reading config: {e}", file=sys.stderr)
         
-        # If no paths found in config, add default paths
+        # Additional paths to check
         if platform.system() == "Windows":
-            default = [str(Path.cwd())]
+            paths.append(str(Path.cwd()))
         else:
-            default = [
-                str(Path("/usr/share/doom")),
-                str(Path("/usr/share/games/doom")),
-                str(Path.home() / ".local/games/doom"),
-                str(Path.home() / ".local/share/doom")
-            ]
-        return default
+                paths.append(str(Path("/usr/share/doom")))
+                paths.append(str(Path("/usr/share/games/doom")))
+                paths.append(str(Path.home() / ".local/games/doom"))
+                paths.append(str(Path.home() / ".local/share/doom"))
+        return paths
 
     def is_iwad(self, file_path: str) -> bool:
         """Check if a file is an IWAD or IPK3"""
