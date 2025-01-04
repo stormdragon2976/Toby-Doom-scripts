@@ -122,7 +122,7 @@ class SpeechHandler:
         r'^$',
         r'^[0-9]',
         r'^P_StartScript:',
-        r'^(Facing |fluidsynth |INTRO|MAP[0-9]+|Music "|Unknown)',
+        r'^(Facing |fluidsynth|INTRO|MAP[0-9]+|Music "|Unknown)',
         r'^(\[Toby Accessibility Mod\] )?READ.*',
         r'^ *TITLEMAP',
         r'^\[Toby Accessibility Mod\] (INTRO|READMe)([0-9]+).*',
@@ -206,6 +206,8 @@ class SpeechHandler:
         while True:
             try:
                 line = process.stdout.readline()
+                # Keep gzdoom's existing functionality of lines being printed to the console.
+                print(line, end='')
                 if not line:
                     break
                 
