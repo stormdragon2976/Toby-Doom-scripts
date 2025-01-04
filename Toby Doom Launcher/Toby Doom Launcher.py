@@ -605,10 +605,10 @@ class DoomLauncher(QMainWindow):
     def populate_game_list(self):
         """Populate the game selection combo box"""
         gameList = [
-            "Freedoom Toby Demo Map",
-            "Freedoom",
-            "Freedoom Toby Delux Map Pack",
-            "Freedoom OperationMDK",
+            "Toby Demo Map",
+            "Classic Doom",
+            "Toby Doom",
+            "OperationMDK",
             "Classic Heretic",
             "Toby Heretic",
             "Classic Hexen",
@@ -686,7 +686,7 @@ class DoomLauncher(QMainWindow):
             gameType = "DOOM"
             if "Demo Map" in selectedGame:
                 baseFiles.append(str(self.gamePath / "Addons/MAPS/Toby-Demo-Level.wad"))
-            elif "Delux Map Pack" in selectedGame:
+            elif "Toby Doom" in selectedGame:
                 baseFiles.append(str(self.gamePath / "Addons/MAPS/TobyDoomLevels.wad"))
                 musicRenamer = self.gamePath / "Toby-Doom-Level-Music-Renamer.pk3"
                 if musicRenamer.exists():
