@@ -44,9 +44,9 @@ if platform.system() == "Windows":
     # Set up DLL paths for Windows
     if getattr(sys, 'frozen', False):
         # If running as compiled executable
-        dll_path = os.path.join(sys._MEIPASS, 'lib')
-        if os.path.exists(dll_path):
-            os.add_dll_directory(dll_path)
+        dllPath = os.path.join(sys._MEIPASS, 'lib')
+        if os.path.exists(dllPath):
+            os.add_dll_directory(dllPath)
         # Also add the executable's directory
         os.add_dll_directory(os.path.dirname(sys.executable))
 
@@ -376,10 +376,10 @@ class IWADSelector:
 
 class CustomGameDialog(QDialog):
     """Dialog for selecting and configuring custom games"""
-    def __init__(self, custom_games: Dict[str, dict], parent=None):
+    def __init__(self, customGames: Dict[str, dict], parent=None):
         super().__init__(parent)
         self.setWindowTitle("Custom Game Selection")
-        self.custom_games = custom_games
+        self.customGames = customGames
 
         # Create layout
         layout = QVBoxLayout(self)
@@ -388,7 +388,7 @@ class CustomGameDialog(QDialog):
         label = QLabel("Select Custom Game:")
         self.gameCombo = QComboBox()
         self.gameCombo.setAccessibleName("Custom Game Selection")
-        self.gameCombo.addItems(sorted(custom_games.keys()))
+        self.gameCombo.addItems(sorted(customGames.keys()))
         self.gameCombo.setEditable(True)
         self.gameCombo.lineEdit().setReadOnly(True)
         # Connect enter key to accept
@@ -559,15 +559,15 @@ class DoomLauncher(QMainWindow):
 
             # If not found, add to end or after [GlobalSettings]
             if not found:
-                global_settings_index = -1
+                globalSettingsIndex = -1
                 for i, line in enumerate(lines):
                     if line.strip() == '[GlobalSettings]':
-                        global_settings_index = i
+                        globalSettingsIndex = i
                         break
 
-                if global_settings_index >= 0:
+                if globalSettingsIndex >= 0:
                     # Insert after [GlobalSettings]
-                    lines.insert(global_settings_index + 1, f'Toby_NarrationOutputType={value}\n')
+                    lines.insert(globalSettingsIndex + 1, f'Toby_NarrationOutputType={value}\n')
                 else:
                     # Add [GlobalSettings] section if it doesn't exist
                     lines.append('\n[GlobalSettings]\n')
@@ -850,24 +850,34 @@ class DoomLauncher(QMainWindow):
 
     def load_custom_games(self) -> Dict[str, dict]:
         """Load all custom game configurations"""
-        custom_games = {}
+        customGames = {}
         if platform.system() == "Windows":
-            custom_dir = Path.cwd() / "TobyCustom"
+            customDir = Path.cwd() / "TobyCustom"
         else:
-            custom_dir = Path(__file__).parent / "TobyCustom"
+            pathList = [
+                Path(__file__).parent / "TobyCustom",
+                self.gamePath / "TobyCustom",
+                Path(os.path.expanduser("~/.local/share/doom/TobyCustom"))
+            ]
+    
+            # Use first existing path or fall back to original
+            customDir = next(
+                (path for path in pathList if path.exists()),
+                Path(__file__).parent / "TobyCustom"
+            )
 
-        if not custom_dir.exists():
-            return custom_games
+        if not customDir.exists():
+            return customGames
 
-        for json_file in custom_dir.glob("*.json"):
+        for json_file in customDir.glob("*.json"):
             try:
                 with open(json_file, 'r') as f:
                     game_config = json.load(f)
-                    custom_games[game_config['name']] = game_config
+                    customGames[game_config['name']] = game_config
             except Exception as e:
                 print(f"Error loading custom game {json_file}: {e}")
                 
-        return custom_games
+        return customGames
 
     def check_dependencies(self, dependencies: List[dict]) -> bool:
         """Check if required files exist and show download info if not"""
@@ -1128,14 +1138,14 @@ class DoomLauncher(QMainWindow):
             # Platform-specific audio playback
             if platform.system() == "Windows":
                 # Use absolute paths for Windows Media Player
-                playlist_path = self.gamePath / "temp_playlist.m3u"
+                playlistPath = self.gamePath / "temp_playlist.m3u"
                 try:
-                    with open(playlist_path, 'w', encoding='utf-8') as f:
+                    with open(playlistPath, 'w', encoding='utf-8') as f:
                         f.write('#EXTM3U\n')  # M3U header
                         for track in audioTracks:
                             abs_path = track.resolve()  # Get absolute path
                             f.write(str(abs_path) + '\n')
-                    os.startfile(str(playlist_path))
+                    os.startfile(str(playlistPath))
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"Failed to play audio: {e}")
                 finally:
@@ -1143,7 +1153,7 @@ class DoomLauncher(QMainWindow):
                     def cleanup():
                         time.sleep(2)
                         try:
-                            playlist_path.unlink()
+                            playlistPath.unlink()
                         except:
                             pass
                     threading.Thread(target=cleanup, daemon=True).start()
