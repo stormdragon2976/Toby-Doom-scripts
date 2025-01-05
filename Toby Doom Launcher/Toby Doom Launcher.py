@@ -33,7 +33,7 @@ import threading
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from setproctitle import setproctitle
-from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
     QComboBox, QPushButton, QLabel, QSpinBox, QMessageBox, QLineEdit, QDialog,
     QDialogButtonBox, QRadioButton)
 from PySide6.QtCore import Qt
@@ -50,6 +50,8 @@ if platform.system() == "Windows":
         # Also add the executable's directory
         os.add_dll_directory(os.path.dirname(sys.executable))
 
+    # Sound playback for audio manual on Windows
+    import winsound
     # Initialize Windows speech provider
     try:
         import accessible_output2.outputs.auto
@@ -289,6 +291,179 @@ class MenuDialog(QDialog):
         return values
 
 
+class AudioPlayer:
+    def __init__(self):
+        self.stopRequested = False
+        self.currentTrack = None
+        self.isPlaying = False
+        self.process = None
+
+    def playFiles(self, files):
+        """Play a list of audio files sequentially"""
+        self.stopRequested = False
+        self.isPlaying = True
+        
+        if platform.system() == "Windows":
+            try:
+                for file in files:
+                    if self.stopRequested:
+                        break
+                    self.currentTrack = file
+                    winsound.PlaySound(str(file), winsound.SND_FILENAME | winsound.SND_NOSTOP)
+            except Exception as e:
+                print(f"Windows audio error: {e}", file=sys.stderr)
+                self.isPlaying = False
+                return False
+        else:
+            try:
+                if shutil.which('mpv'):
+                    self.process = subprocess.Popen(
+                        ['mpv', '--really-quiet', '--no-video'] + [str(f) for f in files]
+                    )
+                    self.process.wait()
+                elif shutil.which('play'):
+                    self.process = subprocess.Popen(
+                        ['play', '-qV0'] + [str(f) for f in files]
+                    )
+                    self.process.wait()
+                else:
+                    print("No suitable audio player found", file=sys.stderr)
+                    self.isPlaying = False
+                    return False
+            except Exception as e:
+                print(f"Audio playback error: {e}", file=sys.stderr)
+                self.isPlaying = False
+                return False
+                
+        self.isPlaying = False
+        return True
+
+    def stop(self):
+        """Stop current playback"""
+        self.stopRequested = True
+        if platform.system() == "Windows":
+            winsound.PlaySound(None, winsound.SND_PURGE)
+        elif self.process:  # Add this condition for Linux/Mac
+            self.process.terminate()
+            self.process = None
+
+
+class AudioManualDialog(QDialog):
+    """Dialog for audio manual playback"""
+    def __init__(self, manualPath, parent=None):
+        super().__init__(parent)
+        self.manualPath = manualPath
+        self.audioPlayer = AudioPlayer()
+        self.initUI()
+
+    def initUI(self):
+        """Initialize the dialog UI"""
+        self.setWindowTitle("Audio Manual")
+        layout = QVBoxLayout(self)
+
+        # Manual selection
+        manualLabel = QLabel("Select Manual:")
+        self.manualCombo = AccessibleComboBox()
+        self.manualCombo.setEditable(True)
+        self.manualCombo.lineEdit().setReadOnly(True)
+        self.manualCombo.setAccessibleName("Manual Selection")
+        self.populateManuals()
+        layout.addWidget(manualLabel)
+        layout.addWidget(self.manualCombo)
+        self.manualCombo.lineEdit().returnPressed.connect(self.playAudio)
+
+        # Track selection
+        trackLabel = QLabel("Select Track:")
+        self.trackCombo = AccessibleComboBox()
+        self.trackCombo.setEditable(True)
+        self.trackCombo.lineEdit().setReadOnly(True)
+        self.trackCombo.setAccessibleName("Track Selection")
+        self.populateTracks()
+        layout.addWidget(trackLabel)
+        layout.addWidget(self.trackCombo)
+        self.trackCombo.lineEdit().returnPressed.connect(self.playAudio)
+
+        # buttons
+        buttonLayout = QHBoxLayout()
+        self.playButton = QPushButton("Play")
+        self.stopButton = QPushButton("Stop")
+        self.stopButton.setEnabled(False)
+    
+        self.playButton.clicked.connect(self.playAudio)
+        self.stopButton.clicked.connect(self.stopAudio)
+    
+        buttonLayout.addWidget(self.playButton)
+        buttonLayout.addWidget(self.stopButton)
+        layout.addLayout(buttonLayout)
+
+        # Status label
+        self.statusLabel = QLabel("")
+        layout.addWidget(self.statusLabel)
+
+        # Update tracks
+        self.manualCombo.currentTextChanged.connect(self.populateTracks)
+
+        closeButton = QPushButton("Close")
+        closeButton.clicked.connect(self.close)
+        layout.addWidget(closeButton)
+
+    def keyPressEvent(self, event):
+        """Handle key press events"""
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self.playAudio()
+        else:
+            super().keyPressEvent(event)
+
+    def populateManuals(self):
+        """Populate manual selection combo box"""
+        manualDirs = sorted([d for d in self.manualPath.iterdir() if d.is_dir()])
+        self.manualCombo.addItems([m.name for m in manualDirs])
+
+    def populateTracks(self):
+        """Populate track selection combo box"""
+        self.trackCombo.clear()
+        selectedManual = self.manualPath / self.manualCombo.currentText()
+        if selectedManual.exists():
+            tracks = sorted(selectedManual.glob('*.mp3'))
+            self.trackCombo.addItem("Play All")
+            self.trackCombo.addItems([t.stem for t in tracks])
+
+    def playAudio(self):
+        """Start audio playback"""
+        selectedManual = self.manualPath / self.manualCombo.currentText()
+        selectedTrack = self.trackCombo.currentText()
+
+        if selectedTrack == "Play All":
+            audioTracks = sorted(selectedManual.glob('*.mp3'))
+        else:
+            audioTracks = [selectedManual / f"{selectedTrack}.mp3"]
+
+        self.playButton.setEnabled(False)
+        self.stopButton.setEnabled(True)
+        
+        def playbackThread():
+            for track in audioTracks:
+                if self.audioPlayer.stopRequested:
+                    break
+                self.statusLabel.setText(f"Playing: {track.stem}")
+                
+            success = self.audioPlayer.playFiles(audioTracks)
+            
+            # Update GUI
+            self.playButton.setEnabled(True)
+            self.stopButton.setEnabled(False)
+            self.statusLabel.setText("Playback complete" if success else "Playback error")
+
+        threading.Thread(target=playbackThread, daemon=True).start()
+
+    def stopAudio(self):
+        """Stop audio playback"""
+        self.audioPlayer.stop()
+        self.playButton.setEnabled(True)
+        self.stopButton.setEnabled(False)
+        self.statusLabel.setText("Playback stopped")
+
+
 class IWADSelector:
     """Handles IWAD file detection and selection"""
     
@@ -388,11 +563,9 @@ class CustomGameDialog(QDialog):
         
         # Game selection combobox
         label = QLabel("Select Custom Game:")
-        self.gameCombo = QComboBox()
+        self.gameCombo = AccessibleComboBox()
         self.gameCombo.setAccessibleName("Custom Game Selection")
         self.gameCombo.addItems(sorted(customGames.keys()))
-        self.gameCombo.setEditable(True)
-        self.gameCombo.lineEdit().setReadOnly(True)
         # Connect enter key to accept
         self.gameCombo.lineEdit().returnPressed.connect(self.accept)
         
@@ -1079,96 +1252,10 @@ class DoomLauncher(QMainWindow):
         if not manualPath.exists():
             QMessageBox.warning(self, "Error", "Manual directory not found")
             return
-            
-        # Get all manual directories and print them for debugging
-        manualDirs = sorted([d for d in manualPath.iterdir() if d.is_dir()])
-        
-        if not manualDirs:
-            QMessageBox.warning(self, "Error", "No manuals found")
-            return
-            
-        # Get all tracks for the first manual
-        firstManualTracks = sorted(manualDirs[0].glob('*.mp3'))
-        
-        # Create dialog with proper accessibility names
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Audio Manual")
-        dialogLayout = QVBoxLayout(dialog)
-        
-        # Manual selection
-        manualLabel = QLabel("Select Manual:")
-        manualCombo = AccessibleComboBox()
-        manualCombo.setAccessibleName("Manual Selection")
-        manualCombo.addItems([m.name for m in manualDirs])
-        dialogLayout.addWidget(manualLabel)
-        dialogLayout.addWidget(manualCombo)
-        
-        # Track selection
-        trackLabel = QLabel("Select Track:")
-        trackCombo = AccessibleComboBox()
-        trackCombo.setAccessibleName("Track Selection")
-        trackCombo.addItem("Play All")
-        trackCombo.addItems([t.stem for t in firstManualTracks])
-        dialogLayout.addWidget(trackLabel)
-        dialogLayout.addWidget(trackCombo)
-        
-        # Update track list when manual selection changes
-        def update_tracks(manualName):
-            selectedManual = manualPath / manualName
-            tracks = sorted(selectedManual.glob('*.mp3'))
-            trackCombo.clear()
-            trackCombo.addItem("Play All")
-            trackCombo.addItems([t.stem for t in tracks])
-        
-        manualCombo.currentTextChanged.connect(update_tracks)
-        
-        # Dialog buttons
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        buttons.accepted.connect(dialog.accept)
-        buttons.rejected.connect(dialog.reject)
-        dialogLayout.addWidget(buttons)
-        
-        if dialog.exec():
-            selectedManual = manualPath / manualCombo.currentText()
-            selectedTrack = trackCombo.currentText()
-            
-            if selectedTrack == "Play All":
-                audioTracks = sorted(selectedManual.glob('*.mp3'))
-            else:
-                audioTracks = [selectedManual / f"{selectedTrack}.mp3"]
-            
-            # Platform-specific audio playback
-            if platform.system() == "Windows":
-                # Use absolute paths for Windows Media Player
-                playlistPath = self.gamePath / "temp_playlist.m3u"
-                try:
-                    with open(playlistPath, 'w', encoding='utf-8') as f:
-                        f.write('#EXTM3U\n')  # M3U header
-                        for track in audioTracks:
-                            abs_path = track.resolve()  # Get absolute path
-                            f.write(str(abs_path) + '\n')
-                    os.startfile(str(playlistPath))
-                except Exception as e:
-                    QMessageBox.critical(self, "Error", f"Failed to play audio: {e}")
-                finally:
-                    # Clean up playlist after delay
-                    def cleanup():
-                        time.sleep(2)
-                        try:
-                            playlistPath.unlink()
-                        except:
-                            pass
-                    threading.Thread(target=cleanup, daemon=True).start()
-            elif platform.system() == "Darwin":  # macOS
-                subprocess.run(['afplay'] + [str(t) for t in audioTracks])
-            else:  # Linux
-                if shutil.which('mpv'):
-                    subprocess.run(['mpv', '--really-quiet', '--no-video'] + [str(t) for t in audioTracks])
-                elif shutil.which('play'):
-                    subprocess.run(['play', '-qV0'] + [str(t) for t in audioTracks])
-                else:
-                    QMessageBox.warning(self, "Error", "No suitable audio player found. Please install mpv or sox.")
 
+        dialog = AudioManualDialog(manualPath, self)
+        dialog.exec()
+        
     def show_deathmatch_dialog(self):
         """Show deathmatch configuration dialog"""
         # First show map selection
