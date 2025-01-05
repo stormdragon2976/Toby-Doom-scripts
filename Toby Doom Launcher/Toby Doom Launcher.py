@@ -309,7 +309,13 @@ class AudioPlayer:
                     if self.stopRequested:
                         break
                     self.currentTrack = file
-                    winsound.PlaySound(str(file), winsound.SND_FILENAME | winsound.SND_NOSTOP)
+                    # WTF Windows? Powershell only mp3 playback, really?
+                    ps_command = f'(New-Object Media.SoundPlayer "{file}").PlaySync()'
+                    self.process = subprocess.Popen(
+                        ['powershell', '-Command', ps_command],
+                        creationflags=subprocess.CREATE_NO_WINDOW
+                    )
+                    self.process.wait()
             except Exception as e:
                 print(f"Windows audio error: {e}", file=sys.stderr)
                 self.isPlaying = False
@@ -342,8 +348,10 @@ class AudioPlayer:
         """Stop current playback"""
         self.stopRequested = True
         if platform.system() == "Windows":
-            winsound.PlaySound(None, winsound.SND_PURGE)
-        elif self.process:  # Add this condition for Linux/Mac
+            if self.process:
+                self.process.terminate()
+                self.process = None
+        elif self.process:
             self.process.terminate()
             self.process = None
 
