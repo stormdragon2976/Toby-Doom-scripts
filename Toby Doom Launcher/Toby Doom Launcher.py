@@ -292,6 +292,7 @@ class MenuDialog(QDialog):
 
 
 class AudioPlayer:
+    """Handles cross-platform audio playback"""
     def __init__(self):
         self.stopRequested = False
         self.currentTrack = None
@@ -309,8 +310,18 @@ class AudioPlayer:
                     if self.stopRequested:
                         break
                     self.currentTrack = file
-                    # WTF Windows? Powershell only mp3 playback, really?
-                    ps_command = f'(New-Object Media.SoundPlayer "{file}").PlaySync()'
+                    ps_command = f'''
+                    Add-Type -AssemblyName PresentationCore;
+                    $player = New-Object System.Windows.Media.MediaPlayer;
+                    $player.Open("{file}");
+                    $player.Play();
+                    while ($player.Position -lt $player.NaturalDuration.TimeSpan) {{
+                        if ($player.Position -eq $null) {{ break }}
+                        Start-Sleep -Milliseconds 100
+                    }}
+                    $player.Stop();
+                    $player.Close();
+                    '''
                     self.process = subprocess.Popen(
                         ['powershell', '-Command', ps_command],
                         creationflags=subprocess.CREATE_NO_WINDOW
@@ -320,39 +331,66 @@ class AudioPlayer:
                 print(f"Windows audio error: {e}", file=sys.stderr)
                 self.isPlaying = False
                 return False
-        else:
+        else:  # Linux/Mac
             try:
                 if shutil.which('mpv'):
-                    self.process = subprocess.Popen(
-                        ['mpv', '--really-quiet', '--no-video'] + [str(f) for f in files]
-                    )
-                    self.process.wait()
+                    cmd = ['mpv', '--really-quiet', '--no-video']
+                    print("Using mpv for playback")  # Debug
                 elif shutil.which('play'):
-                    self.process = subprocess.Popen(
-                        ['play', '-qV0'] + [str(f) for f in files]
-                    )
-                    self.process.wait()
+                    cmd = ['play', '-qV0']
+                    print("Using play for playback")  # Debug
                 else:
                     print("No suitable audio player found", file=sys.stderr)
                     self.isPlaying = False
                     return False
+                    
+                for file in files:
+                    if self.stopRequested:
+                        print("Stop requested before starting file")  # Debug
+                        break
+                    print(f"Starting playback of {file}")  # Debug
+                    self.process = subprocess.Popen(cmd + [str(file)])
+                    
+                    while True:
+                        if self.stopRequested:
+                            print("Stop requested during playback")  # Debug
+                            try:
+                                import signal
+                                self.process.send_signal(signal.SIGTERM)
+                                print("Sent SIGTERM to process")  # Debug
+                            except Exception as e:
+                                print(f"Error sending signal: {e}")  # Debug
+                            break
+                            
+                        if self.process.poll() is not None:
+                            print("Process completed naturally")  # Debug
+                            break
+                            
+                        time.sleep(0.1)
+                    
+                    if self.stopRequested:
+                        print("Breaking out of file loop")  # Debug
+                        break
+                        
             except Exception as e:
                 print(f"Audio playback error: {e}", file=sys.stderr)
                 self.isPlaying = False
                 return False
-                
+        
         self.isPlaying = False
         return True
 
     def stop(self):
         """Stop current playback"""
+        print("Stop requested")  # Debug
         self.stopRequested = True
-        if platform.system() == "Windows":
-            if self.process:
+        if self.process:
+            print("Process exists, attempting to terminate")  # Debug
+            try:
                 self.process.terminate()
-                self.process = None
-        elif self.process:
-            self.process.terminate()
+                print("Process terminated")  # Debug
+            except Exception as e:
+                print(f"Error terminating process: {e}")  # Debug
             self.process = None
 
 
@@ -418,7 +456,9 @@ class AudioManualDialog(QDialog):
     def keyPressEvent(self, event):
         """Handle key press events"""
         if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-            self.playAudio()
+            # Only handle enter if not in a combo box
+            if not isinstance(self.focusWidget(), AccessibleComboBox):
+                self.playAudio()
         else:
             super().keyPressEvent(event)
 
