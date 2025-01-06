@@ -11,7 +11,7 @@
   ],
   "files": [
     "Xim-StarWars-v3.1.5.pk3",
-    "Addons/STARWARS/*"
+    "Addons/STARWARS/*.pk3"
   ],
   "use_map_menu": true
 }
