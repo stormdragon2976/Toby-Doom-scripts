@@ -37,8 +37,13 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QComboBox, QPushButton, QLabel, QSpinBox, QMessageBox, QLineEdit, QDialog,
     QDialogButtonBox, QRadioButton)
 from PySide6.QtCore import Qt, QTimer
-import vlc
 import webbrowser
+try:
+    import vlc
+except ImportError:
+    def show_audio_manual(self):
+        QMessageBox.warning(self, "VLC Not Found", 
+            "VLC is required for Audio Manual playback. Please install VLC media player.")
 
 # Initialize speech provider based on platform
 if platform.system() == "Windows":
