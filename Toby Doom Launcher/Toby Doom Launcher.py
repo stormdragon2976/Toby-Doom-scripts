@@ -19,6 +19,16 @@
 # Boston MA  02110-1301 USA.
 
 
+# ======= Version Configuration =======
+# Update version number here for new releases of Toby Doom Accessibility Mod
+# Example: 8.0 for version 8.0, 8.5 for version 8.5, etc
+
+TOBY_VERSION_NUMBER = 8.0
+
+# DO NOT EDIT ANYTHING BELOW THIS LINE!
+# ===================================
+
+
 import configparser
 import json
 import sys
@@ -31,7 +41,7 @@ import shutil
 import glob
 import threading
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import Final, List, Dict, Optional, Tuple
 from setproctitle import setproctitle
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
     QComboBox, QPushButton, QLabel, QSpinBox, QMessageBox, QLineEdit, QDialog,
@@ -43,7 +53,7 @@ try:
 except ImportError:
     def show_audio_manual(self):
         QMessageBox.warning(self, "VLC Not Found", 
-            "VLC is required for Audio Manual playback. Please install VLC media player.")
+            "VLC is required for Audio Manual playback. Please install VLC media player. If running from source, also install python-vlc.")
 
 # Initialize speech provider based on platform
 if platform.system() == "Windows":
@@ -741,7 +751,7 @@ class DoomLauncher(QMainWindow):
             self.gamePath = Path.home() / ".local/games/doom"
             self.configFile = Path(os.getenv('XDG_CONFIG_HOME', Path.home() / '.config')) / 'gzdoom/gzdoom.ini'
         
-        self.tobyVersion = "8-0"
+        self.tobyVersion = TOBY_VERSION
         self.speechHandler = SpeechHandler()
         self.iwadSelector = IWADSelector()  # Add IWAD selector
         self.init_launcher_ui()
@@ -1668,6 +1678,8 @@ class DoomLauncher(QMainWindow):
 
 
 if __name__ == "__main__":
+    # Converts version number to required format (e.g., 8.0 -> "8-0")
+    TOBY_VERSION: Final[str] = f"{int(TOBY_VERSION_NUMBER)}-{int(TOBY_VERSION_NUMBER * 10 % 10)}"
     setproctitle("Toby Doom Launcher")
     app = QApplication(sys.argv)
     window = DoomLauncher()
