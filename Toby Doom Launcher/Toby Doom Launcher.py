@@ -27,6 +27,7 @@ import re
 import subprocess
 import time
 import platform
+import playsound
 import shutil
 import glob
 import threading
@@ -36,7 +37,8 @@ from setproctitle import setproctitle
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, 
     QComboBox, QPushButton, QLabel, QSpinBox, QMessageBox, QLineEdit, QDialog,
     QDialogButtonBox, QRadioButton)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
+import vlc
 import webbrowser
 
 # Initialize speech provider based on platform
@@ -51,7 +53,6 @@ if platform.system() == "Windows":
         os.add_dll_directory(os.path.dirname(sys.executable))
 
     # Sound playback for audio manual on Windows
-    import winsound
     # Initialize Windows speech provider
     try:
         import accessible_output2.outputs.auto
@@ -292,106 +293,79 @@ class MenuDialog(QDialog):
 
 
 class AudioPlayer:
-    """Handles cross-platform audio playback"""
+    """Handles cross-platform audio playback using VLC"""
     def __init__(self):
-        self.stopRequested = False
         self.currentTrack = None
+        self.currentIndex = -1
         self.isPlaying = False
-        self.process = None
-
-    def playFiles(self, files):
-        """Play a list of audio files sequentially"""
-        self.stopRequested = False
-        self.isPlaying = True
+        self.tracks = []
+        try:
+            import vlc
+            self.instance = vlc.Instance()
+            self.player = self.instance.media_player_new()
+        except Exception as e:
+            print(f"Error initializing VLC: {e}", file=sys.stderr)
+            self.instance = None
+            self.player = None
         
-        if platform.system() == "Windows":
+    def loadTracks(self, files):
+        """Load list of tracks to play"""
+        self.tracks = [str(f) for f in files]
+        self.currentIndex = 0 if self.tracks else -1
+        print(f"Loaded tracks: {self.tracks}")
+        
+    def play(self):
+        """Play current track"""
+        if not self.player:
+            print("VLC player not initialized", file=sys.stderr)
+            return False
+            
+        if self.currentIndex >= 0 and self.currentIndex < len(self.tracks):
+            self.stop()  # Stop any current playback first
+            self.currentTrack = self.tracks[self.currentIndex]
             try:
-                for file in files:
-                    if self.stopRequested:
-                        break
-                    self.currentTrack = file
-                    ps_command = f'''
-                    Add-Type -AssemblyName PresentationCore;
-                    $player = New-Object System.Windows.Media.MediaPlayer;
-                    $player.Open("{file}");
-                    $player.Play();
-                    while ($player.Position -lt $player.NaturalDuration.TimeSpan) {{
-                        if ($player.Position -eq $null) {{ break }}
-                        Start-Sleep -Milliseconds 100
-                    }}
-                    $player.Stop();
-                    $player.Close();
-                    '''
-                    self.process = subprocess.Popen(
-                        ['powershell', '-Command', ps_command],
-                        creationflags=subprocess.CREATE_NO_WINDOW
-                    )
-                    self.process.wait()
+                print(f"Attempting to play: {self.currentTrack}")
+                media = self.instance.media_new(self.currentTrack)
+                self.player.set_media(media)
+                self.player.play()
+                self.isPlaying = True
+                return True
             except Exception as e:
-                print(f"Windows audio error: {e}", file=sys.stderr)
+                print(f"Playback error: {e}", file=sys.stderr)
                 self.isPlaying = False
                 return False
-        else:  # Linux/Mac
-            try:
-                if shutil.which('mpv'):
-                    cmd = ['mpv', '--really-quiet', '--no-video']
-                    print("Using mpv for playback")  # Debug
-                elif shutil.which('play'):
-                    cmd = ['play', '-qV0']
-                    print("Using play for playback")  # Debug
-                else:
-                    print("No suitable audio player found", file=sys.stderr)
-                    self.isPlaying = False
-                    return False
-                    
-                for file in files:
-                    if self.stopRequested:
-                        print("Stop requested before starting file")  # Debug
-                        break
-                    print(f"Starting playback of {file}")  # Debug
-                    self.process = subprocess.Popen(cmd + [str(file)])
-                    
-                    while True:
-                        if self.stopRequested:
-                            print("Stop requested during playback")  # Debug
-                            try:
-                                import signal
-                                self.process.send_signal(signal.SIGTERM)
-                                print("Sent SIGTERM to process")  # Debug
-                            except Exception as e:
-                                print(f"Error sending signal: {e}")  # Debug
-                            break
-                            
-                        if self.process.poll() is not None:
-                            print("Process completed naturally")  # Debug
-                            break
-                            
-                        time.sleep(0.1)
-                    
-                    if self.stopRequested:
-                        print("Breaking out of file loop")  # Debug
-                        break
-                        
-            except Exception as e:
-                print(f"Audio playback error: {e}", file=sys.stderr)
-                self.isPlaying = False
-                return False
+        return False
         
-        self.isPlaying = False
-        return True
-
     def stop(self):
-        """Stop current playback"""
-        print("Stop requested")  # Debug
-        self.stopRequested = True
-        if self.process:
-            print("Process exists, attempting to terminate")  # Debug
+        """Stop playback"""
+        if self.isPlaying and self.player:
             try:
-                self.process.terminate()
-                print("Process terminated")  # Debug
+                self.player.stop()
             except Exception as e:
-                print(f"Error terminating process: {e}")  # Debug
-            self.process = None
+                print(f"Stop error: {e}", file=sys.stderr)
+            self.isPlaying = False
+            
+    def nextTrack(self):
+        """Move to next track"""
+        if self.currentIndex < len(self.tracks) - 1:
+            self.stop()
+            self.currentIndex += 1
+            return True
+        return False
+            
+    def previousTrack(self):
+        """Move to previous track"""
+        if self.currentIndex > 0:
+            self.stop()
+            self.currentIndex -= 1
+            return True
+        return False
+            
+    def getCurrentTrackName(self):
+        """Get current track name without path"""
+        if self.currentTrack:
+            return Path(self.currentTrack).stem
+        return ""
 
 
 class AudioManualDialog(QDialog):
@@ -401,7 +375,7 @@ class AudioManualDialog(QDialog):
         self.manualPath = manualPath
         self.audioPlayer = AudioPlayer()
         self.initUI()
-
+        
     def initUI(self):
         """Initialize the dialog UI"""
         self.setWindowTitle("Audio Manual")
@@ -410,57 +384,74 @@ class AudioManualDialog(QDialog):
         # Manual selection
         manualLabel = QLabel("Select Manual:")
         self.manualCombo = AccessibleComboBox()
-        self.manualCombo.setEditable(True)
-        self.manualCombo.lineEdit().setReadOnly(True)
         self.manualCombo.setAccessibleName("Manual Selection")
         self.populateManuals()
         layout.addWidget(manualLabel)
         layout.addWidget(self.manualCombo)
-        self.manualCombo.lineEdit().returnPressed.connect(self.playAudio)
 
         # Track selection
         trackLabel = QLabel("Select Track:")
         self.trackCombo = AccessibleComboBox()
-        self.trackCombo.setEditable(True)
-        self.trackCombo.lineEdit().setReadOnly(True)
         self.trackCombo.setAccessibleName("Track Selection")
-        self.populateTracks()
         layout.addWidget(trackLabel)
         layout.addWidget(self.trackCombo)
-        self.trackCombo.lineEdit().returnPressed.connect(self.playAudio)
 
-        # buttons
+        # Create control buttons first
         buttonLayout = QHBoxLayout()
+        self.prevButton = QPushButton("Previous")
         self.playButton = QPushButton("Play")
         self.stopButton = QPushButton("Stop")
-        self.stopButton.setEnabled(False)
-    
+        self.nextButton = QPushButton("Next")
+        
+        # Setup focus and keyboard interaction
+        self.manualCombo.setFocusPolicy(Qt.StrongFocus)
+        self.trackCombo.setFocusPolicy(Qt.StrongFocus)
+        # Allow Enter key to play selected track
+        self.trackCombo.lineEdit().returnPressed.connect(self.playAudio)
+
+        # Set keyboard shortcuts and accessibility for buttons
+        self.prevButton.setShortcut("Left")
+        self.playButton.setShortcut("Space")
+        self.stopButton.setShortcut("S")
+        self.nextButton.setShortcut("Right")
+        
+        # Set accessible names for buttons
+        self.prevButton.setAccessibleName("Previous Track")
+        self.playButton.setAccessibleName("Play Track")
+        self.stopButton.setAccessibleName("Stop Playback")
+        self.nextButton.setAccessibleName("Next Track")
+        
+        # Connect button signals
+        self.prevButton.clicked.connect(self.previousTrack)
         self.playButton.clicked.connect(self.playAudio)
         self.stopButton.clicked.connect(self.stopAudio)
-    
+        self.nextButton.clicked.connect(self.nextTrack)
+        
+        # Add buttons to layout
+        buttonLayout.addWidget(self.prevButton)
         buttonLayout.addWidget(self.playButton)
         buttonLayout.addWidget(self.stopButton)
+        buttonLayout.addWidget(self.nextButton)
         layout.addLayout(buttonLayout)
 
         # Status label
         self.statusLabel = QLabel("")
+        self.statusLabel.setAccessibleName("Playback Status")
         layout.addWidget(self.statusLabel)
 
-        # Update tracks
+        # Update tracks when manual changes
         self.manualCombo.currentTextChanged.connect(self.populateTracks)
 
+        # Close button
         closeButton = QPushButton("Close")
+        closeButton.setAccessibleName("Close Dialog")
+        closeButton.setShortcut("Escape")
         closeButton.clicked.connect(self.close)
         layout.addWidget(closeButton)
-
-    def keyPressEvent(self, event):
-        """Handle key press events"""
-        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-            # Only handle enter if not in a combo box
-            if not isinstance(self.focusWidget(), AccessibleComboBox):
-                self.playAudio()
-        else:
-            super().keyPressEvent(event)
+        
+        # Initial setup
+        self.populateTracks()
+        self.updateButtonStates()
 
     def populateManuals(self):
         """Populate manual selection combo box"""
@@ -475,41 +466,123 @@ class AudioManualDialog(QDialog):
             tracks = sorted(selectedManual.glob('*.mp3'))
             self.trackCombo.addItem("Play All")
             self.trackCombo.addItems([t.stem for t in tracks])
+            # Update button states after populating tracks
+            self.updateButtonStates()
+
+    def updateButtonStates(self):
+        """Update button enabled states"""
+        trackCount = len(self.audioPlayer.tracks)
+        hasMultipleTracks = trackCount > 1
+        isFirst = self.audioPlayer.currentIndex <= 0
+        isLast = self.audioPlayer.currentIndex >= trackCount - 1
+        
+        # Enable play button if we have any tracks selected or available
+        hasTrackSelected = (self.trackCombo.count() > 0 and self.trackCombo.currentText()) or trackCount > 0
+        
+        # Allow navigation during playback for Play All mode
+        isPlayAll = self.trackCombo.currentText() == "Play All"
+        
+        self.prevButton.setEnabled(hasMultipleTracks and not isFirst and (not self.audioPlayer.isPlaying or isPlayAll))
+        self.nextButton.setEnabled(hasMultipleTracks and not isLast and (not self.audioPlayer.isPlaying or isPlayAll))
+        self.playButton.setEnabled(hasTrackSelected and not self.audioPlayer.isPlaying)
+        self.stopButton.setEnabled(self.audioPlayer.isPlaying)
 
     def playAudio(self):
         """Start audio playback"""
+        if not self.manualCombo.currentText() or not self.trackCombo.currentText():
+            return
+            
         selectedManual = self.manualPath / self.manualCombo.currentText()
         selectedTrack = self.trackCombo.currentText()
 
+        # Stop any current playback
+        self.audioPlayer.stop()
+
+        print(f"Selected track: {selectedTrack}")
         if selectedTrack == "Play All":
-            audioTracks = sorted(selectedManual.glob('*.mp3'))
-        else:
-            audioTracks = [selectedManual / f"{selectedTrack}.mp3"]
-
-        self.playButton.setEnabled(False)
-        self.stopButton.setEnabled(True)
-        
-        def playbackThread():
-            for track in audioTracks:
-                if self.audioPlayer.stopRequested:
-                    break
-                self.statusLabel.setText(f"Playing: {track.stem}")
-                
-            success = self.audioPlayer.playFiles(audioTracks)
+            # Get sorted list of MP3 files
+            tracks = sorted(selectedManual.glob('*.mp3'))
+            print(f"Loading {len(tracks)} tracks for Play All")
+            self.audioPlayer.loadTracks([str(t) for t in tracks])
             
-            # Update GUI
-            self.playButton.setEnabled(True)
-            self.stopButton.setEnabled(False)
-            self.statusLabel.setText("Playback complete" if success else "Playback error")
+            # Ensure clean event management
+            em = self.audioPlayer.player.event_manager()
+            try:
+                em.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
+            try:
+                em.event_attach(
+                    vlc.EventType.MediaPlayerEndReached,
+                    lambda x: self.handleTrackEnd()
+                )
+            except Exception as e:
+                print(f"Error attaching event: {e}")
+        else:
+            print("Loading single track")
+            tracks = [selectedManual / f"{selectedTrack}.mp3"]
+            self.audioPlayer.loadTracks([str(t) for t in tracks])
+            # Disconnect any existing end of media event
+            try:
+                self.audioPlayer.player.event_manager().event_detach(
+                    vlc.EventType.MediaPlayerEndReached
+                )
+            except:
+                pass
 
-        threading.Thread(target=playbackThread, daemon=True).start()
+        # Start playback
+        if self.audioPlayer.play():
+            self.statusLabel.setText(f"Playing: {self.audioPlayer.getCurrentTrackName()}")
+        else:
+            self.statusLabel.setText("Playback error")
+        self.updateButtonStates()
 
     def stopAudio(self):
         """Stop audio playback"""
         self.audioPlayer.stop()
-        self.playButton.setEnabled(True)
-        self.stopButton.setEnabled(False)
         self.statusLabel.setText("Playback stopped")
+        self.updateButtonStates()
+
+    def nextTrack(self):
+        """Play next track"""
+        if self.audioPlayer.nextTrack():
+            if self.audioPlayer.play():
+                self.statusLabel.setText(f"Playing: {self.audioPlayer.getCurrentTrackName()}")
+            else:
+                self.statusLabel.setText("Playback error")
+        self.updateButtonStates()
+
+    def previousTrack(self):
+        """Play previous track"""
+        if self.audioPlayer.previousTrack():
+            if self.audioPlayer.play():
+                self.statusLabel.setText(f"Playing: {self.audioPlayer.getCurrentTrackName()}")
+            else:
+                self.statusLabel.setText("Playback error")
+        self.updateButtonStates()
+
+    def handleTrackEnd(self):
+        """Handle end of track event for auto-play next"""
+        if self.audioPlayer.isPlaying and self.trackCombo.currentText() == "Play All":
+            if not self.audioPlayer.currentIndex >= len(self.audioPlayer.tracks) - 1:
+                # Use QTimer to avoid VLC thread issues
+                QTimer.singleShot(100, self.nextTrack)
+
+    def updateButtonStates(self):
+        """Update button enabled states"""
+        trackCount = len(self.audioPlayer.tracks)
+        hasMultipleTracks = trackCount > 1
+        isFirst = self.audioPlayer.currentIndex <= 0
+        isLast = self.audioPlayer.currentIndex >= trackCount - 1
+
+        # Enable play button if we have any tracks selected or available
+        hasTrackSelected = (self.trackCombo.count() > 0 and self.trackCombo.currentText()) or trackCount > 0
+
+        # Always enable navigation buttons during Play All, otherwise only when stopped
+        self.prevButton.setEnabled(hasMultipleTracks and not isFirst)
+        self.nextButton.setEnabled(hasMultipleTracks and not isLast)
+        self.playButton.setEnabled(hasTrackSelected and not self.audioPlayer.isPlaying)
+        self.stopButton.setEnabled(self.audioPlayer.isPlaying)
 
 
 class IWADSelector:
