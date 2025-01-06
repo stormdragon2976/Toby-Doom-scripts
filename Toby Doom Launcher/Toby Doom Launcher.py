@@ -297,15 +297,46 @@ class AudioPlayer:
         self.currentTrack = None
         self.currentIndex = -1
         self.isPlaying = False
+        self.playAllMode = False
         self.tracks = []
+        
+        # State monitoring timer
+        self.stateTimer = QTimer()
+        self.stateTimer.setInterval(500)  # Check every 500ms
+        self.stateTimer.timeout.connect(self.checkPlayerState)
+        
         try:
-            import vlc
             self.instance = vlc.Instance()
             self.player = self.instance.media_player_new()
+            # Store VLC states we care about
+            self.State_Ended = vlc.State.Ended
+            self.State_Error = vlc.State.Error
+            self.State_Playing = vlc.State.Playing
         except Exception as e:
             print(f"Error initializing VLC: {e}", file=sys.stderr)
             self.instance = None
             self.player = None
+    
+    def checkPlayerState(self):
+        """Monitor VLC player state"""
+        if not self.player or not self.isPlaying:
+            return
+            
+        try:
+            state = self.player.get_state()
+            
+            # Check for end states
+            if state in (self.State_Ended, self.State_Error):
+                print(f"Track ended (state: {state})")
+                self.isPlaying = False
+                self.stateTimer.stop()
+                
+                if self.playAllMode and self.currentIndex < len(self.tracks) - 1:
+                    self.currentIndex += 1
+                    self.play()
+                    
+        except Exception as e:
+            print(f"Error checking player state: {e}", file=sys.stderr)
         
     def loadTracks(self, files):
         """Load list of tracks to play"""
@@ -320,15 +351,20 @@ class AudioPlayer:
             return False
             
         if self.currentIndex >= 0 and self.currentIndex < len(self.tracks):
-            self.stop()  # Stop any current playback first
+            self.stop() # Stop any current playback first
             self.currentTrack = self.tracks[self.currentIndex]
             try:
                 print(f"Attempting to play: {self.currentTrack}")
                 media = self.instance.media_new(self.currentTrack)
                 self.player.set_media(media)
-                self.player.play()
-                self.isPlaying = True
-                return True
+                result = self.player.play()
+                if result == 0: # VLC returns 0 on success
+                    self.isPlaying = True
+                    self.stateTimer.start()  # Start state monitoring
+                    return True
+                else:
+                    print(f"VLC play() returned error: {result}", file=sys.stderr)
+                    return False
             except Exception as e:
                 print(f"Playback error: {e}", file=sys.stderr)
                 self.isPlaying = False
@@ -337,12 +373,14 @@ class AudioPlayer:
         
     def stop(self):
         """Stop playback"""
-        if self.isPlaying and self.player:
+        if self.player and self.isPlaying:
             try:
+                self.stateTimer.stop() # Stop state monitoring
                 self.player.stop()
+                self.isPlaying = False
+                print("Playback stopped")
             except Exception as e:
                 print(f"Stop error: {e}", file=sys.stderr)
-            self.isPlaying = False
             
     def nextTrack(self):
         """Move to next track"""
@@ -361,7 +399,7 @@ class AudioPlayer:
         return False
             
     def getCurrentTrackName(self):
-        """Get current track name without path"""
+        """Get current track name"""
         if self.currentTrack:
             return Path(self.currentTrack).stem
         return ""
@@ -373,8 +411,19 @@ class AudioManualDialog(QDialog):
         super().__init__(parent)
         self.manualPath = manualPath
         self.audioPlayer = AudioPlayer()
+        
+        # Create update timer for checking playback state
+        self.stateTimer = QTimer(self)
+        self.stateTimer.timeout.connect(self.checkPlaybackState)
+        self.stateTimer.start(500)  # Check every 500ms
+        
         self.initUI()
         
+    def checkPlaybackState(self):
+        """Periodically check playback state and update UI"""
+        if not self.audioPlayer.isPlaying and self.stopButton.isEnabled():
+            self.updateButtonStates()
+
     def initUI(self):
         """Initialize the dialog UI"""
         self.setWindowTitle("Audio Manual")
@@ -395,7 +444,7 @@ class AudioManualDialog(QDialog):
         layout.addWidget(trackLabel)
         layout.addWidget(self.trackCombo)
 
-        # Create control buttons first
+        # Create buttons
         buttonLayout = QHBoxLayout()
         self.prevButton = QPushButton("Previous")
         self.playButton = QPushButton("Play")
@@ -452,6 +501,12 @@ class AudioManualDialog(QDialog):
         self.populateTracks()
         self.updateButtonStates()
 
+    def closeEvent(self, event):
+        """Handle dialog close event"""
+        self.stateTimer.stop()
+        self.audioPlayer.stop()
+        super().closeEvent(event)
+
     def populateManuals(self):
         """Populate manual selection combo box"""
         manualDirs = sorted([d for d in self.manualPath.iterdir() if d.is_dir()])
@@ -468,24 +523,6 @@ class AudioManualDialog(QDialog):
             # Update button states after populating tracks
             self.updateButtonStates()
 
-    def updateButtonStates(self):
-        """Update button enabled states"""
-        trackCount = len(self.audioPlayer.tracks)
-        hasMultipleTracks = trackCount > 1
-        isFirst = self.audioPlayer.currentIndex <= 0
-        isLast = self.audioPlayer.currentIndex >= trackCount - 1
-        
-        # Enable play button if we have any tracks selected or available
-        hasTrackSelected = (self.trackCombo.count() > 0 and self.trackCombo.currentText()) or trackCount > 0
-        
-        # Allow navigation during playback for Play All mode
-        isPlayAll = self.trackCombo.currentText() == "Play All"
-        
-        self.prevButton.setEnabled(hasMultipleTracks and not isFirst and (not self.audioPlayer.isPlaying or isPlayAll))
-        self.nextButton.setEnabled(hasMultipleTracks and not isLast and (not self.audioPlayer.isPlaying or isPlayAll))
-        self.playButton.setEnabled(hasTrackSelected and not self.audioPlayer.isPlaying)
-        self.stopButton.setEnabled(self.audioPlayer.isPlaying)
-
     def playAudio(self):
         """Start audio playback"""
         if not self.manualCombo.currentText() or not self.trackCombo.currentText():
@@ -496,38 +533,17 @@ class AudioManualDialog(QDialog):
 
         # Stop any current playback
         self.audioPlayer.stop()
+        self.audioPlayer.playAllMode = selectedTrack == "Play All"
 
-        print(f"Selected track: {selectedTrack}")
         if selectedTrack == "Play All":
             # Get sorted list of MP3 files
             tracks = sorted(selectedManual.glob('*.mp3'))
             print(f"Loading {len(tracks)} tracks for Play All")
             self.audioPlayer.loadTracks([str(t) for t in tracks])
-            
-            # Ensure clean event management
-            em = self.audioPlayer.player.event_manager()
-            try:
-                em.event_detach(vlc.EventType.MediaPlayerEndReached)
-            except:
-                pass
-            try:
-                em.event_attach(
-                    vlc.EventType.MediaPlayerEndReached,
-                    lambda x: self.handleTrackEnd()
-                )
-            except Exception as e:
-                print(f"Error attaching event: {e}")
         else:
             print("Loading single track")
             tracks = [selectedManual / f"{selectedTrack}.mp3"]
             self.audioPlayer.loadTracks([str(t) for t in tracks])
-            # Disconnect any existing end of media event
-            try:
-                self.audioPlayer.player.event_manager().event_detach(
-                    vlc.EventType.MediaPlayerEndReached
-                )
-            except:
-                pass
 
         # Start playback
         if self.audioPlayer.play():
@@ -538,6 +554,7 @@ class AudioManualDialog(QDialog):
 
     def stopAudio(self):
         """Stop audio playback"""
+        self.audioPlayer.playAllMode = False  # Reset play all flag
         self.audioPlayer.stop()
         self.statusLabel.setText("Playback stopped")
         self.updateButtonStates()
@@ -560,13 +577,6 @@ class AudioManualDialog(QDialog):
                 self.statusLabel.setText("Playback error")
         self.updateButtonStates()
 
-    def handleTrackEnd(self):
-        """Handle end of track event for auto-play next"""
-        if self.audioPlayer.isPlaying and self.trackCombo.currentText() == "Play All":
-            if not self.audioPlayer.currentIndex >= len(self.audioPlayer.tracks) - 1:
-                # Use QTimer to avoid VLC thread issues
-                QTimer.singleShot(100, self.nextTrack)
-
     def updateButtonStates(self):
         """Update button enabled states"""
         trackCount = len(self.audioPlayer.tracks)
@@ -577,7 +587,7 @@ class AudioManualDialog(QDialog):
         # Enable play button if we have any tracks selected or available
         hasTrackSelected = (self.trackCombo.count() > 0 and self.trackCombo.currentText()) or trackCount > 0
 
-        # Always enable navigation buttons during Play All, otherwise only when stopped
+        # Allow navigation during playback for Play All mode
         self.prevButton.setEnabled(hasMultipleTracks and not isFirst)
         self.nextButton.setEnabled(hasMultipleTracks and not isLast)
         self.playButton.setEnabled(hasTrackSelected and not self.audioPlayer.isPlaying)
