@@ -27,7 +27,6 @@ import re
 import subprocess
 import time
 import platform
-import playsound
 import shutil
 import glob
 import threading
