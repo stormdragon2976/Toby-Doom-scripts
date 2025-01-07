@@ -48,12 +48,6 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, 
     QDialogButtonBox, QRadioButton)
 from PySide6.QtCore import Qt, QTimer
 import webbrowser
-try:
-    import vlc
-except ImportError:
-    def show_audio_manual(self):
-        QMessageBox.warning(self, "VLC Not Found", 
-            "VLC is required for Audio Manual playback. Please install VLC media player. If running from source, also install python-vlc.")
 
 # Initialize speech provider based on platform
 if platform.system() == "Windows":
@@ -307,13 +301,15 @@ class MenuDialog(QDialog):
 
 
 class AudioPlayer:
-    """Handles cross-platform audio playback using VLC"""
+    """Handles cross-platform audio playback using VLC if available"""
+
     def __init__(self):
         self.currentTrack = None
         self.currentIndex = -1
         self.isPlaying = False
         self.playAllMode = False
         self.tracks = []
+        self.vlcAvailable = False
         
         # State monitoring timer
         self.stateTimer = QTimer()
@@ -321,20 +317,22 @@ class AudioPlayer:
         self.stateTimer.timeout.connect(self.checkPlayerState)
         
         try:
+            import vlc
             self.instance = vlc.Instance()
             self.player = self.instance.media_player_new()
             # Store VLC states we care about
             self.State_Ended = vlc.State.Ended
             self.State_Error = vlc.State.Error
             self.State_Playing = vlc.State.Playing
+            self.vlcAvailable = True
         except Exception as e:
-            print(f"Error initializing VLC: {e}", file=sys.stderr)
+            print(f"VLC not available: {e}", file=sys.stderr)
             self.instance = None
             self.player = None
     
     def checkPlayerState(self):
         """Monitor VLC player state"""
-        if not self.player or not self.isPlaying:
+        if not self.vlcAvailable or not self.player or not self.isPlaying:
             return
             
         try:
@@ -355,14 +353,15 @@ class AudioPlayer:
         
     def loadTracks(self, files):
         """Load list of tracks to play"""
+        if not self.vlcAvailable:
+            return
         self.tracks = [str(f) for f in files]
         self.currentIndex = 0 if self.tracks else -1
         print(f"Loaded tracks: {self.tracks}")
         
     def play(self):
         """Play current track"""
-        if not self.player:
-            print("VLC player not initialized", file=sys.stderr)
+        if not self.vlcAvailable:
             return False
             
         if self.currentIndex >= 0 and self.currentIndex < len(self.tracks):
@@ -388,6 +387,9 @@ class AudioPlayer:
         
     def stop(self):
         """Stop playback"""
+        if not self.vlcAvailable:
+            return
+            
         if self.player and self.isPlaying:
             try:
                 self.stateTimer.stop() # Stop state monitoring
@@ -399,6 +401,9 @@ class AudioPlayer:
             
     def nextTrack(self):
         """Move to next track"""
+        if not self.vlcAvailable:
+            return False
+            
         if self.currentIndex < len(self.tracks) - 1:
             self.stop()
             self.currentIndex += 1
@@ -407,6 +412,9 @@ class AudioPlayer:
             
     def previousTrack(self):
         """Move to previous track"""
+        if not self.vlcAvailable:
+            return False
+            
         if self.currentIndex > 0:
             self.stop()
             self.currentIndex -= 1
@@ -415,9 +423,34 @@ class AudioPlayer:
             
     def getCurrentTrackName(self):
         """Get current track name"""
+        if not self.vlcAvailable:
+            return ""
+            
         if self.currentTrack:
             return Path(self.currentTrack).stem
         return ""
+
+
+class AudioManualDialog(QDialog):
+    """Dialog for audio manual playback"""
+    def __init__(self, manualPath, parent=None):
+        super().__init__(parent)
+        self.manualPath = manualPath
+        self.audioPlayer = AudioPlayer()
+        
+        # Show warning if VLC not available
+        if not self.audioPlayer.vlcAvailable:
+            QMessageBox.warning(self, "VLC Not Found", 
+                "VLC is required for Audio Manual playback. Please install VLC media player. If running from source, also install python-vlc.")
+            self.close()
+            return
+        
+        # Create update timer for checking playback state
+        self.stateTimer = QTimer(self)
+        self.stateTimer.timeout.connect(self.checkPlaybackState)
+        self.stateTimer.start(500)  # Check every 500ms
+        
+        self.initUI()
 
 
 class AudioManualDialog(QDialog):
