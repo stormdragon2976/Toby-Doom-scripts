@@ -10,7 +10,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['speechd'],
+    excludes=[],
     noarchive=False,
     optimize=0,
 )
