@@ -3,9 +3,9 @@
   "dependencies": [
     {
       "file": "Xim-StarWars-v3.1.5.pk3",
-      "url": "",
+      "url": "https://www.moddb.com/mods/xims-star-wars-doom",
       "messages": [
-        "Place Xim-StarWars-v3.1.5.pk3 in ~/.local/games/doom"
+        "Place Xim-StarWars-v3.1.5.pk3 in the Toby Doom directory, on Linux or Mac, ~/.local/games/doom"
       ]
     }
   ],
