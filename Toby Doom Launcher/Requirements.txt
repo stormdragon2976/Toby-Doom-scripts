@@ -1,4 +1,0 @@
-accessible_output2
-PySide6>=6.0.0
-python-vlc
-setproctitle>=1.2.0
