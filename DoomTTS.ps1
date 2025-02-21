@@ -1,7 +1,7 @@
 # Change the next line to $true to enable the script
-$useTextToSpeech = $false
+$useTextToSpeech = $true
 # Set this to $true to use SAPI, $false to use nvdaControllerClient or fall back to clipboard
-$useSAPI = $true
+$useSAPI = $false
 # Set the speech rate. -10 to 10, default 0
 $speechRate = 0
 
